@@ -14,7 +14,8 @@
 #include <esp_lcd_panel_io.h>
 #include <esp_lcd_panel_ops.h>
 #include <driver/spi_common.h>
-#include <cmath>
+#include <vector>
+#include <cstdio>
 
 #define TAG "ESP32-S3-LCD-BME280"
 
@@ -35,44 +36,44 @@ private:
     }
 
     esp_err_t WriteReg(uint8_t reg, uint8_t val) {
-        uint8_t buf[2] = {reg, val};
-        return i2c_master_transmit(dev_handle_, buf, 2, 100);
+        std::vector<uint8_t> buf = {reg, val};
+        return i2c_master_transmit(dev_handle_, buf.data(), 2, 100);
     }
 
 public:
     bool Init(i2c_master_bus_handle_t bus) {
-        uint8_t addrs[2] = {0x76, 0x77};
+        std::vector<uint8_t> addrs = {0x76, 0x77};
         for (uint8_t addr : addrs) {
-            i2c_device_config_t dev_cfg = {
-                .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-                .device_address = addr,
-                .scl_speed_hz = 100000,
-            };
+            i2c_device_config_t dev_cfg = {};
+            dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+            dev_cfg.device_address = addr;
+            dev_cfg.scl_speed_hz = 100000;
             if (i2c_master_bus_add_device(bus, &dev_cfg, &dev_handle_) == ESP_OK) {
                 uint8_t id = 0;
                 if (ReadRegs(0xD0, &id, 1) == ESP_OK && (id == 0x60 || id == 0x58)) {
                     ESP_LOGI(TAG, "BME280/BMP280 найден по адресу 0x%02X (ID=0x%02X)", addr, id);
-                    uint8_t c1[26], c2[7];
-                    ReadRegs(0x88, c1, 26);
-                    ReadRegs(0xE1, c2, 7);
-                    dig_T1_ = (c1[1] << 8) | c1[0];
-                    dig_T2_ = (c1[3] << 8) | c1[2];
-                    dig_T3_ = (c1[5] << 8) | c1[4];
-                    dig_P1_ = (c1[7] << 8) | c1[6];
-                    dig_P2_ = (c1[9] << 8) | c1[8];
-                    dig_P3_ = (c1[11] << 8) | c1[10];
-                    dig_P4_ = (c1[13] << 8) | c1[12];
-                    dig_P5_ = (c1[15] << 8) | c1[14];
-                    dig_P6_ = (c1[17] << 8) | c1[16];
-                    dig_P7_ = (c1[19] << 8) | c1[18];
-                    dig_P8_ = (c1[21] << 8) | c1[20];
-                    dig_P9_ = (c1[23] << 8) | c1[22];
-                    dig_H1_ = c1[25];
-                    dig_H2_ = (c2[1] << 8) | c2[0];
-                    dig_H3_ = c2[2];
-                    dig_H4_ = (c2[3] << 4) | (c2[4] & 0x0F);
-                    dig_H5_ = (c2[5] << 4) | (c2[4] >> 4);
-                    dig_H6_ = (int8_t)c2[6];
+                    std::vector<uint8_t> c1(26, 0);
+                    std::vector<uint8_t> c2(7, 0);
+                    ReadRegs(0x88, c1.data(), 26);
+                    ReadRegs(0xE1, c2.data(), 7);
+                    dig_T1_ = (c1.at(1) << 8) | c1.at(0);
+                    dig_T2_ = (c1.at(3) << 8) | c1.at(2);
+                    dig_T3_ = (c1.at(5) << 8) | c1.at(4);
+                    dig_P1_ = (c1.at(7) << 8) | c1.at(6);
+                    dig_P2_ = (c1.at(9) << 8) | c1.at(8);
+                    dig_P3_ = (c1.at(11) << 8) | c1.at(10);
+                    dig_P4_ = (c1.at(13) << 8) | c1.at(12);
+                    dig_P5_ = (c1.at(15) << 8) | c1.at(14);
+                    dig_P6_ = (c1.at(17) << 8) | c1.at(16);
+                    dig_P7_ = (c1.at(19) << 8) | c1.at(18);
+                    dig_P8_ = (c1.at(21) << 8) | c1.at(20);
+                    dig_P9_ = (c1.at(23) << 8) | c1.at(22);
+                    dig_H1_ = c1.at(25);
+                    dig_H2_ = (c2.at(1) << 8) | c2.at(0);
+                    dig_H3_ = c2.at(2);
+                    dig_H4_ = (c2.at(3) << 4) | (c2.at(4) & 0x0F);
+                    dig_H5_ = (c2.at(5) << 4) | (c2.at(4) >> 4);
+                    dig_H6_ = (int8_t)c2.at(6);
 
                     WriteReg(0xF2, 0x01);
                     WriteReg(0xF4, 0x27);
@@ -90,12 +91,12 @@ public:
 
     bool Read(float& temp_c, float& hum_pct, float& press_mmhg) {
         if (!initialized_) return false;
-        uint8_t d[8];
-        if (ReadRegs(0xF7, d, 8) != ESP_OK) return false;
+        std::vector<uint8_t> d(8, 0);
+        if (ReadRegs(0xF7, d.data(), 8) != ESP_OK) return false;
 
-        int32_t adc_P = ((int32_t)d[0] << 12) | ((int32_t)d[1] << 4) | (d[2] >> 4);
-        int32_t adc_T = ((int32_t)d[3] << 12) | ((int32_t)d[4] << 4) | (d[5] >> 4);
-        int32_t adc_H = ((int32_t)d[6] << 8) | d[7];
+        int32_t adc_P = ((int32_t)d.at(0) << 12) | ((int32_t)d.at(1) << 4) | (d.at(2) >> 4);
+        int32_t adc_T = ((int32_t)d.at(3) << 12) | ((int32_t)d.at(4) << 4) | (d.at(5) >> 4);
+        int32_t adc_H = ((int32_t)d.at(6) << 8) | d.at(7);
 
         int32_t var1 = ((((adc_T >> 3) - ((int32_t)dig_T1_ << 1))) * ((int32_t)dig_T2_)) >> 11;
         int32_t var2 = (((((adc_T >> 4) - ((int32_t)dig_T1_)) * ((adc_T >> 4) - ((int32_t)dig_T1_))) >> 12) * ((int32_t)dig_T3_)) >> 14;
@@ -140,14 +141,13 @@ private:
     Bme280Sensor bme280_;
 
     void InitializeI2cAndSensors() {
-        i2c_master_bus_config_t i2c_bus_cfg = {
-            .i2c_port = I2C_NUM_0,
-            .sda_io_num = BME280_I2C_SDA_PIN,
-            .scl_io_num = BME280_I2C_SCL_PIN,
-            .clk_source = I2C_CLK_SRC_DEFAULT,
-            .glitch_ignore_cnt = 7,
-            .flags = { .enable_internal_pullup = true },
-        };
+        i2c_master_bus_config_t i2c_bus_cfg = {};
+        i2c_bus_cfg.i2c_port = I2C_NUM_0;
+        i2c_bus_cfg.sda_io_num = BME280_I2C_SDA_PIN;
+        i2c_bus_cfg.scl_io_num = BME280_I2C_SCL_PIN;
+        i2c_bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
+        i2c_bus_cfg.glitch_ignore_cnt = 7;
+        i2c_bus_cfg.flags.enable_internal_pullup = true;
         if (i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus_) == ESP_OK) {
             bme280_.Init(i2c_bus_);
         }
@@ -159,9 +159,11 @@ private:
             [this](const PropertyList& properties) -> ReturnValue {
                 float t = 0, h = 0, p = 0;
                 if (bme280_.Read(t, h, p)) {
-                    char json[128];
-                    snprintf(json, sizeof(json), "{\"temperature_c\": %.1f, \"humidity_percent\": %.1f, \"pressure_mmhg\": %.1f}", t, h, p);
-                    return std::string(json);
+                    std::string json(128, '\0');
+                    int len = snprintf(&json.at(0), json.size(),
+                        "{\"temperature_c\": %.1f, \"humidity_percent\": %.1f, \"pressure_mmhg\": %.1f}", t, h, p);
+                    json.resize(len);
+                    return json;
                 }
                 return std::string("{\"error\": \"Датчик BME280 не отвечает или не подключен\"}");
             });
@@ -231,7 +233,7 @@ public:
     }
 
     virtual AudioCodec* GetAudioCodec() override {
-#ifdef AUDIO_I2S_METHOD_SIMPLEX
+        #ifdef AUDIO_I2S_METHOD_SIMPLEX
         static NoAudioCodecSimplex audio_codec(AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE,
             AUDIO_I2S_SPK_GPIO_BCLK, AUDIO_I2S_SPK_GPIO_LRCK, AUDIO_I2S_SPK_GPIO_DOUT,
             AUDIO_I2S_MIC_GPIO_SCK, AUDIO_I2S_MIC_GPIO_WS, AUDIO_I2S_MIC_GPIO_DIN);
@@ -241,7 +243,8 @@ public:
 #endif
         return &audio_codec;
     }
-virtual Display* GetDisplay() override {
+
+    virtual Display* GetDisplay() override {
         return display_;
     }
 
